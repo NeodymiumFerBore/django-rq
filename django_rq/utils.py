@@ -103,7 +103,18 @@ def get_scheduler_statistics():
         # jobs in more than one of them
         queue = get_queue_by_index(index)
         connection = queue.connection.connection_pool.connection_kwargs
-        conn_key = f"{connection['host']}:{connection.get('port', 6379)}/{connection.get('db', 0)}"
+
+        # When using Sentinel, connection does not have a host key, so build conn_key from all sentinels host:port pairs.
+        if 'connection_pool' in connection and hasattr(connection['connection_pool'], 'sentinel_manager'):
+            pool = connection['connection_pool']
+            master = pool.sentinel_manager.discover_master(pool.service_name)
+            if master:
+                conn_key = f"{master[0]}:{master[1]}/{pool.service_name}/{pool.sentinel_manager.connection_kwargs.get('db', 0)}"
+            else:
+                continue
+        else:
+            conn_key = f"{connection['host']}:{connection.get('port', 6379)}/{connection.get('db', 0)}"
+
         if conn_key not in schedulers:
             try:
                 scheduler = get_scheduler(config['name'])
